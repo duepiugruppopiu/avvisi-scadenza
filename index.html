@@ -413,9 +413,10 @@ Restiamo a disposizione. Un cordiale saluto,</textarea></div>
     <div class="email-field-label">Testo</div><div class="email-body" id="ep-body">—</div>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn btn-secondary" onclick="copyBody()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg> Copia testo</button>
-      <button class="btn btn-primary" onclick="openMailto()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg> Apri nel client email</button>
+      <button class="btn btn-secondary" onclick="openMailto()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg> Apri client email</button>
+      <button class="btn btn-primary" onclick="openOutlook()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg> Apri in Outlook</button>
     </div>
-    <p class="email-note">Il pulsante "Apri nel client email" funziona aprendo il file dal tuo PC.</p>
+    <p class="email-note">Se "Apri in Outlook" non funziona, usa "Copia testo" e incolla manualmente.</p>
   </div>
 </div>
 
@@ -918,7 +919,197 @@ function prepEmailCliente(ragioneSociale){
   currentMailto=email?`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`:'';
   document.getElementById('modal-email').classList.add('open');
 }
-function openMailto(){if(currentMailto)window.location.href=currentMailto;}
+function openMailto(){
+  if(!currentMailto)return;
+  // Try ms-outlook:// protocol first (opens Outlook desktop app directly on Mac/Windows)
+  const outlookUrl=currentMailto.replace(/^mailto:/,'ms-outlook:compose?to=').replace(/\?subject=/,'&subject=').replace(/&body=/,'&body=');
+  // Use a hidden iframe trick to try ms-outlook without leaving the page
+  const iframe=document.createElement('iframe');
+  iframe.style.display='none';
+  document.body.appendChild(iframe);
+  iframe.src=currentMailto.replace('mailto:','ms-outlook://compose?to=').replace('?subject=','&subject=');
+  // Fallback to standard mailto after short delay
+  setTimeout(()=>{
+    document.body.removeChild(iframe);
+    window.location.href=currentMailto;
+  },500);
+}
+function copyBody(){
+  navigator.clipboard.writeText(document.getElementById('ep-body').textContent)
+    .then(()=>showToast('Testo copiato','success'))
+    .catch(()=>{const el=document.getElementById('ep-body');const r=document.createRange();r.selectNode(el);window.getSelection().removeAllRanges();window.getSelection().addRange(r);document.execCommand('copy');showToast('Testo copiato','success');});
+}
+
+// ── EXPORT CSV ──
+function exportCSV(){
+  const arr=getFiltered(); if(!arr.length){showToast('Nessun dato','error');return;}
+  const hdr=['Num. Contratto','Ragione Sociale','Prodotto (Compagnia)','Punto vendita CONTRATTO',
+    'Frazionamento','Scadenza polizza','Premio Rata Lordo','Att. Intermediazione','Quota Convenzione',
+    'Premio finale','Email','Cellulare','Telefono'];
+  const flds=['numero','ragione_sociale','prodotto','pv_contratto','frazionamento',
+    'scadenza','premio_rata','att_intermediazione','quota_convenzione','premio_finale',
+    'email','cellulare','telefono'];
+  const rows=[hdr.join(';'),...arr.map(p=>flds.map(k=>`"${(p[k]||'').toString().replace(/"/g,'""')}"`).join(';'))];
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8;'}));
+  a.download=`polizze_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  showToast('Esportazione completata','success');
+}
+
+// ── IMPORT CSV ──
+function setupDrop(){
+  const dz=document.getElementById('drop-zone'); if(!dz)return;
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
+}
+function handleFile(file){
+  if(!file)return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='csv'){const r=new FileReader();r.onload=e=>parseCSV(e.target.result);r.readAsText(file,'UTF-8');}
+  else showToast('Salva il file Excel come CSV UTF-8 e riprova','error');
+}
+function parseCSV(text){
+  const lines=text.trim().split('\n').filter(l=>l.trim()); if(lines.length<2){showToast('File non valido','error');return;}
+  const sep=lines[0].includes(';')?';':',';
+  const hdrs=lines[0].split(sep).map(h=>h.trim().replace(/^"|"$/g,''));
+
+  // Mappa intestazioni CSV → campi interni
+  const MAP={
+    'Num. Contratto':'numero', 'Num contratto':'numero', 'Numero Contratto':'numero',
+    'Ragione Sociale':'ragione_sociale',
+    'Prodotto (Compagnia)':'prodotto','Prodotto':'prodotto',
+    'Punto vendita CONTRATTO':'pv_contratto','Punto Vendita CONTRATTO':'pv_contratto',
+    'Frazionamento':'frazionamento',
+    'Scadenza polizza':'scadenza','Scadenza':'scadenza',
+    'Premio Rata Lordo':'premio_rata','Premio rata lordo':'premio_rata',
+    'Email':'email',
+    'Cellulare':'cellulare',
+    'Telefono':'telefono',
+    'Att. Intermediazione':'att_intermediazione','Att Intermediazione':'att_intermediazione',
+    'Quota Convenzione':'quota_convenzione','Quota convenzione':'quota_convenzione',
+    'Premio finale':'premio_finale','Premio Finale':'premio_finale',
+  };
+
+  const colIdx={};
+  hdrs.forEach((h,i)=>{const key=MAP[h]||MAP[h.trim()]; if(key) colIdx[key]=i;});
+
+  const pd=s=>{
+    if(!s||!s.trim())return'';
+    s=s.trim().replace(/['"]/g,'');
+    // DD/MM/YYYY o D/M/YYYY (anno 4 cifre)
+    const m1=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    if(m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+    // DD/MM/YY o D/M/YY (anno 2 cifre — es. 03/04/26 → 2026-04-03)
+    const m2=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})$/);
+    if(m2){
+      const yy=parseInt(m2[3]);
+      const yyyy=yy<=50?2000+yy:1900+yy; // 00-50 → 2000s, 51-99 → 1900s
+      return `${yyyy}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`;
+    }
+    // YYYY-MM-DD o YYYY/MM/DD (già ISO)
+    const m3=s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if(m3) return `${m3[1]}-${m3[2].padStart(2,'0')}-${m3[3].padStart(2,'0')}`;
+    return s;
+  };
+  const pn=s=>{if(!s)return'';return s.replace(',','.').replace(/[^\d.]/g,'');};
+
+  importBuffer=lines.slice(1).map(line=>{
+    const c=line.split(sep).map(v=>v.trim().replace(/^"|"$/g,''));
+    const get=k=>colIdx[k]!==undefined?(c[colIdx[k]]||'').trim():'';
+    return{
+      id:crypto.randomUUID(),
+      numero:get('numero'), ragione_sociale:get('ragione_sociale'),
+      prodotto:get('prodotto'), pv_contratto:get('pv_contratto'),
+      frazionamento:get('frazionamento'),
+      scadenza:pd(get('scadenza')),
+      premio_rata:pn(get('premio_rata')), att_intermediazione:pn(get('att_intermediazione')),
+      quota_convenzione:pn(get('quota_convenzione')), premio_finale:pn(get('premio_finale')),
+      email:get('email'), cellulare:get('cellulare'), telefono:get('telefono'),
+    };
+  }).filter(p=>p.ragione_sociale||p.numero);
+
+  if(!importBuffer.length){showToast('Nessun record valido trovato','error');return;}
+
+  document.getElementById('preview-content').innerHTML=`
+    <p style="font-size:13px;color:var(--text-mid);margin-bottom:12px">Trovati <strong>${importBuffer.length}</strong> record.</p>
+    <div style="overflow:auto;max-height:260px;border:1px solid var(--border);border-radius:var(--radius)">
+    <table><thead><tr><th>N° Contratto</th><th>Ragione Sociale</th><th>Prodotto</th><th>Scadenza</th><th>Premio Rata</th><th>Premio Finale</th></tr></thead>
+    <tbody>${importBuffer.slice(0,10).map(p=>`<tr>
+      <td class="td-mono">${esc(p.numero)}</td>
+      <td class="td-name">${esc(p.ragione_sociale)}</td>
+      <td><span class="c-tag">${esc(p.ramo)}</span></td>
+      <td class="td-date">${p.scadenza?new Date(p.scadenza).toLocaleDateString('it-IT'):'—'}</td>
+      <td class="td-amt">${fmtAmt(p.premio_rata)}</td>
+      <td class="td-amt" style="color:var(--ok)">${fmtAmt(p.premio_finale)}</td>
+    </tr>`).join('')}</tbody></table></div>
+    ${importBuffer.length>10?`<p style="font-size:12px;color:var(--text-dim);margin-top:8px">… e altri ${importBuffer.length-10} record</p>`:''}`;
+  document.getElementById('import-preview').style.display='block';
+  document.getElementById('import-preview').scrollIntoView({behavior:'smooth'});
+}
+
+async function confirmImport(){
+  if(!importBuffer.length)return;
+  polizze=[...polizze,...importBuffer]; saveStorage();
+  if(supaConn)for(const p of importBuffer)await upsertSupa(p);
+  importBuffer=[]; document.getElementById('import-preview').style.display='none';
+  renderAll(); showToast('Importazione completata','success'); showPage('polizze');
+}
+
+// ── SETTINGS ──
+function saveSettings(){
+  SURL=document.getElementById('sup-url').value.trim().replace(/\/$/,'');
+  SKEY=document.getElementById('sup-key').value.trim();
+  localStorage.setItem('ps_cfg',JSON.stringify({url:SURL,key:SKEY}));
+  settings.emailNome=document.getElementById('email-nome').value;
+  settings.emailFrom=document.getElementById('email-from').value;
+  settings.emailSubject=document.getElementById('email-subject').value;
+  settings.tpl={};
+  ['10','1','ov7','ov14','ov20','ov25'].forEach(k=>{const el=document.getElementById('tpl-'+k);if(el)settings.tpl[k]=el.value;});
+  localStorage.setItem('ps_set',JSON.stringify(settings));
+  showToast('Impostazioni salvate','success');
+}
+
+// ── NAV ──
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name)?.classList.add('active');
+  const map={dashboard:0,polizze:1,scadenze:2,import:3,settings:4};
+  const items=document.querySelectorAll('.nav-item');
+  if(items[map[name]]!==undefined)items[map[name]].classList.add('active');
+  if(name==='scadenze')renderScad();
+}
+
+// ── UTILS ──
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+const TOAST_ICONS={
+  success:'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
+  error:'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>',
+  info:'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+};
+let tt;
+function showToast(msg,type=''){
+  const t=document.getElementById('toast');
+  t.innerHTML=`${TOAST_ICONS[type]||TOAST_ICONS.info} ${msg}`;
+  t.className=`toast${type?' '+type:''} show`;
+  clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('show'),3000);
+}
+document.querySelectorAll('.modal-overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
+});
+</script>
+</body>
+</htmlfunction openOutlook(){
+  if(!currentMailto)return;
+  // ms-outlook:// protocol opens Outlook desktop app directly on Mac and Windows
+  const msUrl=currentMailto.replace(/^mailto:/,'ms-outlook://compose?to=').replace(/[?]subject=/,'&subject=');
+  window.location.href=msUrl;
+}
+function openMailto(){
+  if(!currentMailto)return;
+  window.location.href=currentMailto;
+}
 function copyBody(){
   navigator.clipboard.writeText(document.getElementById('ep-body').textContent)
     .then(()=>showToast('Testo copiato','success'))
