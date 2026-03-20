@@ -959,9 +959,7 @@ function delPol(id){
 
 // ── EMAIL ──
 function prepEmailCliente(ragioneSociale){
-  // Title case: prima lettera maiuscola per ogni parola
-  const toTitleCase=s=>s.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
-  const clienteTitle=toTitleCase(ragioneSociale);
+  const toTitleCase=s=>s.replace(/\w\S*/g,t=>t.charAt(0).toUpperCase()+t.substr(1).toLowerCase());
   const pols=polizze.filter(p=>(p.ragione_sociale||'')=== ragioneSociale&&tplK(fascia(p.scadenza).key));
   if(!pols.length){ showToast('Nessuna polizza in scadenza attiva','error'); return; }
   pols.sort((a,b)=>new Date(a.scadenza)-new Date(b.scadenza));
@@ -972,7 +970,6 @@ function prepEmailCliente(ragioneSociale){
   let bodyTpl=tplEl?tplEl.value:'';
   const primaScad=fmtDate(pols[0].scadenza);
   const numeri=pols.map(p=>p.numero||'').filter(Boolean).join(', ');
-  const toTitleCase=s=>s.replace(/\w\S*/g,t=>t.charAt(0).toUpperCase()+t.substr(1).toLowerCase());
   let body=bodyTpl
     .replace(/{CLIENTE}/g,toTitleCase(ragioneSociale))
     .replace(/{SCADENZA}/g,primaScad)
@@ -995,26 +992,6 @@ function prepEmailCliente(ragioneSociale){
   document.getElementById('ep-body').textContent=body;
   currentMailto=email?`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`:'';
   document.getElementById('modal-email').classList.add('open');
-}
-function openMailto(){
-  if(!currentMailto)return;
-  // Try ms-outlook:// protocol first (opens Outlook desktop app directly on Mac/Windows)
-  const outlookUrl=currentMailto.replace(/^mailto:/,'ms-outlook:compose?to=').replace(/\?subject=/,'&subject=').replace(/&body=/,'&body=');
-  // Use a hidden iframe trick to try ms-outlook without leaving the page
-  const iframe=document.createElement('iframe');
-  iframe.style.display='none';
-  document.body.appendChild(iframe);
-  iframe.src=currentMailto.replace('mailto:','ms-outlook://compose?to=').replace('?subject=','&subject=');
-  // Fallback to standard mailto after short delay
-  setTimeout(()=>{
-    document.body.removeChild(iframe);
-    window.location.href=currentMailto;
-  },500);
-}
-function copyBody(){
-  navigator.clipboard.writeText(document.getElementById('ep-body').textContent)
-    .then(()=>showToast('Testo copiato','success'))
-    .catch(()=>{const el=document.getElementById('ep-body');const r=document.createRange();r.selectNode(el);window.getSelection().removeAllRanges();window.getSelection().addRange(r);document.execCommand('copy');showToast('Testo copiato','success');});
 }
 
 // ── EXPORT CSV ──
@@ -1145,17 +1122,6 @@ function saveSettings(){
   ['10','1','ov7','ov14','ov20','ov25'].forEach(k=>{const el=document.getElementById('tpl-'+k);if(el)settings.tpl[k]=el.value;});
   localStorage.setItem('ps_set',JSON.stringify(settings));
   showToast('Impostazioni salvate','success');
-}
-
-// ── NAV ──
-function showPage(name){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById('page-'+name)?.classList.add('active');
-  const map={dashboard:0,polizze:1,scadenze:2,import:3,settings:4};
-  const items=document.querySelectorAll('.nav-item');
-  if(items[map[name]]!==undefined)items[map[name]].classList.add('active');
-  if(name==='scadenze')renderScad();
 }
 
 // ── UTILS ──
