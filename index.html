@@ -494,7 +494,6 @@ function togglePagato(nome,checked){
   updateSubCheckboxes(nome, checked);
 }
 function updateRowPaid(nome, paid){
-  // Trova la riga cliente tramite rowId
   const rowId='crow-'+btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'');
   const row=document.getElementById(rowId);
   if(!row)return;
@@ -503,11 +502,15 @@ function updateRowPaid(nome, paid){
   // Aggiorna cella stato (3a cella, indice 2)
   const cells=row.querySelectorAll('td');
   if(cells[2]){
-    if(paid) cells[2].innerHTML='<span class="chip-pagato">Pagato</span>';
-    else {
-      // Ricalcola fascia più urgente
-      const g=groupByCliente().find(x=>x.ragione_sociale===nome);
-      if(g){ const mu=mostUrgent(g.polizze); cells[2].innerHTML=`<span class="chip ${mu.cls}">${mu.label}</span>`; }
+    if(paid){
+      cells[2].innerHTML='<span class="chip-pagato">Pagato</span>';
+    } else {
+      // Calcola fascia direttamente dalle polizze senza passare per groupByCliente (che usa filtri)
+      const polCliente=polizze.filter(p=>p.ragione_sociale===nome);
+      if(polCliente.length){
+        const mu=mostUrgent(polCliente);
+        cells[2].innerHTML=`<span class="chip ${mu.cls}">${mu.label}</span>`;
+      }
     }
   }
   // Aggiorna badge sidebar
