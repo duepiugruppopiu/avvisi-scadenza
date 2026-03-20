@@ -158,12 +158,12 @@
     <div class="stat-card">
       <div class="stat-label">Quote convenzione</div>
       <div class="stat-value" id="s-conv">€0</div>
-      <div class="stat-sub">da incassare · <span id="s-conv-paid" style="color:var(--ok);font-weight:600">€0</span> incassato</div>
+      <div class="stat-sub">da incassare</div><div style="font-size:20px;font-weight:700;color:var(--ok);margin-top:4px"><span id="s-conv-paid">€0</span> <span style="font-size:11px;font-weight:500;color:var(--ok)">incassato</span></div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Att. intermediazione</div>
       <div class="stat-value" id="s-interm">€0</div>
-      <div class="stat-sub">da incassare · <span id="s-interm-paid" style="color:var(--ok);font-weight:600">€0</span> incassato</div>
+      <div class="stat-sub">da incassare</div><div style="font-size:20px;font-weight:700;color:var(--ok);margin-top:4px"><span id="s-interm-paid">€0</span> <span style="font-size:11px;font-weight:500;color:var(--ok)">incassato</span></div>
     </div>
   </div>
   <div class="dash-grid">
@@ -482,22 +482,64 @@ function saveClientePagato(){
 }
 function togglePagato(nome,checked){
   clientePagato[nome]=checked;
-  // Auto-check conv and interm when client is marked paid
+  // Auto-check conv e interm quando si segna pagato, auto-deseleziona quando si deseleziona
   if(checked){ convPagato[nome]=true; intermPagato[nome]=true; }
+  else { convPagato[nome]=false; intermPagato[nome]=false; }
   saveClientePagato();
-  renderAll();
+  // Aggiorna visivamente la riga senza ri-renderizzare (così non chiude i menu aperti)
+  updateRowPaid(nome, checked);
+  renderDash();
+  renderScad();
+  // Aggiorna i checkbox secondari nella sub-row se aperta
+  updateSubCheckboxes(nome, checked);
+}
+function updateRowPaid(nome, paid){
+  // Trova la riga cliente tramite rowId
+  const rowId='crow-'+btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'');
+  const row=document.getElementById(rowId);
+  if(!row)return;
+  if(paid){ row.classList.add('row-paid'); }
+  else { row.classList.remove('row-paid'); }
+  // Aggiorna cella stato (3a cella, indice 2)
+  const cells=row.querySelectorAll('td');
+  if(cells[2]){
+    if(paid) cells[2].innerHTML='<span class="chip-pagato">Pagato</span>';
+    else {
+      // Ricalcola fascia più urgente
+      const g=groupByCliente().find(x=>x.ragione_sociale===nome);
+      if(g){ const mu=mostUrgent(g.polizze); cells[2].innerHTML=`<span class="chip ${mu.cls}">${mu.label}</span>`; }
+    }
+  }
+  // Aggiorna badge sidebar
+  const urg=polizze.filter(p=>['1','ov7','ov14','ov20','ov25'].includes(fascia(p.scadenza).key)&&!clientePagato[p.ragione_sociale]).length;
+  const bd=document.getElementById('badge-scad');
+  if(bd){ bd.style.display=urg?'inline':'none'; bd.textContent=urg; }
+}
+function updateSubCheckboxes(nome, paid){
+  // Trova le sub-row checkboxes di conv e interm per questo cliente
+  // Le checkbox sono negli header della sub-table
+  const tables=document.querySelectorAll('tr[id^="sub-"] table');
+  tables.forEach(t=>{
+    const checks=t.querySelectorAll('input.pay-check');
+    checks.forEach(c=>{
+      const onch=c.getAttribute('onchange')||'';
+      if(onch.includes("'"+nome.replace(/'/g,"\'")+"'")){
+        c.checked=paid;
+      }
+    });
+  });
 }
 function toggleConv(nome,checked){
   convPagato[nome]=checked;
   saveClientePagato();
   renderDash();
-  renderTable();
+  // Non ri-renderizza la tabella per non chiudere i menu aperti
 }
 function toggleInterm(nome,checked){
   intermPagato[nome]=checked;
   saveClientePagato();
   renderDash();
-  renderTable();
+  // Non ri-renderizza la tabella per non chiudere i menu aperti
 }
 const settings={emailNome:'',emailFrom:'',emailSubject:'Avviso scadenza polizza n° {NUMERO}',tpl:{}};
 
@@ -740,7 +782,7 @@ function renderTable(){
       <td onclick="toggleCliente('${uid}')">${statoCell}</td>
       <td onclick="toggleCliente('${uid}')" style="color:var(--text-mid);font-size:12px">${g.polizze.length} contratt${g.polizze.length===1?'o':'i'}</td>
       <td onclick="toggleCliente('${uid}')" class="td-amt" style="color:var(--ok)">${totStr}</td>
-      <td style="text-align:center">
+      <td style="text-align:center" onclick="event.stopPropagation()">
         <input type="checkbox" class="pay-check" ${isPaid?'checked':''} title="Pagato"
           onchange="togglePagato('${nome_esc}',this.checked)">
       </td>
