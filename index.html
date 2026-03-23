@@ -110,6 +110,18 @@
   .empty-state{text-align:center;padding:56px 24px;color:var(--text-dim);} .empty-state svg{margin-bottom:14px;opacity:.35;} .empty-state h3{font-family:'Instrument Serif',serif;font-size:20px;color:var(--text-mid);margin-bottom:6px;} .empty-state p{font-size:13px;}
   code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:12px;color:var(--text-mid);}
   ::-webkit-scrollbar{width:5px;height:5px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+  .nav-sub{overflow:hidden;max-height:0;transition:max-height .25s ease;}
+  .nav-sub.open{max-height:500px;}
+  .nav-sub-item{display:flex;align-items:center;gap:7px;padding:6px 20px 6px 36px;cursor:pointer;color:var(--text-dim);font-size:12.5px;transition:all .15s;border-left:2px solid transparent;}
+  .nav-sub-item:hover{color:var(--text);background:var(--surface2);}
+  .nav-sub-item.active{color:var(--text);background:var(--surface2);border-left-color:var(--text);font-weight:500;}
+  .nav-parent{display:flex;align-items:center;gap:9px;padding:8px 20px;cursor:pointer;color:var(--text-mid);font-size:13.5px;font-weight:400;transition:all .15s;border-left:2px solid transparent;margin:1px 0;justify-content:space-between;}
+  .nav-parent:hover{color:var(--text);background:var(--surface2);}
+  .nav-parent.active{color:var(--text);background:var(--surface2);border-left-color:var(--text);font-weight:500;}
+  .nav-parent svg{flex-shrink:0;opacity:.65;} .nav-parent.active svg{opacity:1;}
+  .nav-chevron{transition:transform .2s;opacity:.5;flex-shrink:0;}
+  .nav-chevron.open{transform:rotate(90deg);}
+  .nav-month-badge{margin-left:auto;background:var(--accent);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;display:none;}
   .client-row{cursor:pointer;} .client-row:hover td{background:var(--surface2);}
   .pay-check{width:16px;height:16px;cursor:pointer;accent-color:var(--ok);flex-shrink:0;}
   .row-paid td{background:rgba(45,122,79,0.18)!important;}
@@ -133,7 +145,24 @@
   <div class="logo"><span class="logo-mark">PoliSync</span><span class="logo-sub">Gestione Polizze</span></div>
   <div class="nav-lbl">Menu</div>
   <div class="nav-item active" onclick="showPage('dashboard')"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg> Dashboard</div>
-  <div class="nav-item" onclick="showPage('polizze')"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg> Polizze</div>
+  <div class="nav-parent" id="nav-polizze-parent" onclick="togglePolizzeMenu()">
+    <div style="display:flex;align-items:center;gap:9px"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg> Polizze</div>
+    <span class="nav-chevron" id="nav-polizze-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+  </div>
+  <div class="nav-sub" id="nav-polizze-sub">
+    <div class="nav-sub-item" id="nav-mese-01" onclick="showMese('01')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Gennaio<span class="nav-month-badge" id="badge-mese-01"></span></div>
+    <div class="nav-sub-item" id="nav-mese-02" onclick="showMese('02')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Febbraio<span class="nav-month-badge" id="badge-mese-02"></span></div>
+    <div class="nav-sub-item" id="nav-mese-03" onclick="showMese('03')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Marzo<span class="nav-month-badge" id="badge-mese-03"></span></div>
+    <div class="nav-sub-item" id="nav-mese-04" onclick="showMese('04')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Aprile<span class="nav-month-badge" id="badge-mese-04"></span></div>
+    <div class="nav-sub-item" id="nav-mese-05" onclick="showMese('05')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Maggio<span class="nav-month-badge" id="badge-mese-05"></span></div>
+    <div class="nav-sub-item" id="nav-mese-06" onclick="showMese('06')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Giugno<span class="nav-month-badge" id="badge-mese-06"></span></div>
+    <div class="nav-sub-item" id="nav-mese-07" onclick="showMese('07')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Luglio<span class="nav-month-badge" id="badge-mese-07"></span></div>
+    <div class="nav-sub-item" id="nav-mese-08" onclick="showMese('08')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Agosto<span class="nav-month-badge" id="badge-mese-08"></span></div>
+    <div class="nav-sub-item" id="nav-mese-09" onclick="showMese('09')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Settembre<span class="nav-month-badge" id="badge-mese-09"></span></div>
+    <div class="nav-sub-item" id="nav-mese-10" onclick="showMese('10')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Ottobre<span class="nav-month-badge" id="badge-mese-10"></span></div>
+    <div class="nav-sub-item" id="nav-mese-11" onclick="showMese('11')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Novembre<span class="nav-month-badge" id="badge-mese-11"></span></div>
+    <div class="nav-sub-item" id="nav-mese-12" onclick="showMese('12')"><span style="width:7px;height:7px;border-radius:50%;background:var(--text);opacity:.5;flex-shrink:0;display:inline-block"></span> Dicembre<span class="nav-month-badge" id="badge-mese-12"></span></div>
+  </div>
   <div class="nav-item" onclick="showPage('scadenze')"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Scadenze<span class="nav-badge" id="badge-scad"></span></div>
   <div class="nav-lbl">Strumenti</div>
   <div class="nav-item" onclick="showPage('import')"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg> Importa file</div>
@@ -177,7 +206,7 @@
 <!-- POLIZZE -->
 <div id="page-polizze" class="page">
   <div class="page-header">
-    <div><div class="page-title">Polizze</div><div class="page-subtitle">Archivio contratti</div></div>
+    <div><div class="page-title">Polizze</div><div class="page-subtitle" id="polizze-subtitle">Archivio contratti</div></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-secondary" onclick="exportCSV()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg> Esporta CSV</button>
       <button class="btn btn-primary" onclick="openModal('add')"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg> Nuovo contratto</button>
@@ -465,6 +494,7 @@ const FIELDS = ['numero','ragione_sociale','prodotto','pv_contratto','frazioname
 
 // ── STATO ──
 let polizze=[],editingId=null,importBuffer=[];
+let meseAttivo='';  // es. '2026-03' — mese attualmente visualizzato
 let sortCol='scadenza',sortDir=1,currentPage=1;
 let PAGE=20;
 let SURL='https://slxzgxzssxubjbmhopwm.supabase.co',SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNseHpneHpzc3h1YmpibWhvcHdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDA3MjAsImV4cCI6MjA4OTU3NjcyMH0.orMaS2_XDi8X2SFUzGK7qM03bhpgvXn32SLy9KGIbrM',supaConn=false,currentMailto='';
@@ -475,18 +505,20 @@ let contractPagato={};   // polizza.id -> bool
 let contractDisdetto={};  // polizza.id -> bool
 
 function loadClientePagato(){
-  const s=localStorage.getItem('ps_pagato'); if(s) clientePagato=JSON.parse(s);
-  const sc=localStorage.getItem('ps_conv_pagato'); if(sc) convPagato=JSON.parse(sc);
-  const si=localStorage.getItem('ps_interm_pagato'); if(si) intermPagato=JSON.parse(si);
-  const sp=localStorage.getItem('ps_contract_pagato'); if(sp) contractPagato=JSON.parse(sp);
-  const sd=localStorage.getItem('ps_contract_disdetto'); if(sd) contractDisdetto=JSON.parse(sd);
+  const m=meseAttivo||'_';
+  clientePagato=JSON.parse(localStorage.getItem(`ps_pagato_${m}`)||'{}');
+  convPagato=JSON.parse(localStorage.getItem(`ps_conv_pagato_${m}`)||'{}');
+  intermPagato=JSON.parse(localStorage.getItem(`ps_interm_pagato_${m}`)||'{}');
+  contractPagato=JSON.parse(localStorage.getItem(`ps_contract_pagato_${m}`)||'{}');
+  contractDisdetto=JSON.parse(localStorage.getItem(`ps_contract_disdetto_${m}`)||'{}');
 }
 function saveClientePagato(){
-  localStorage.setItem('ps_pagato',JSON.stringify(clientePagato));
-  localStorage.setItem('ps_conv_pagato',JSON.stringify(convPagato));
-  localStorage.setItem('ps_interm_pagato',JSON.stringify(intermPagato));
-  localStorage.setItem('ps_contract_pagato',JSON.stringify(contractPagato));
-  localStorage.setItem('ps_contract_disdetto',JSON.stringify(contractDisdetto));
+  const m=meseAttivo||'_';
+  localStorage.setItem(`ps_pagato_${m}`,JSON.stringify(clientePagato));
+  localStorage.setItem(`ps_conv_pagato_${m}`,JSON.stringify(convPagato));
+  localStorage.setItem(`ps_interm_pagato_${m}`,JSON.stringify(intermPagato));
+  localStorage.setItem(`ps_contract_pagato_${m}`,JSON.stringify(contractPagato));
+  localStorage.setItem(`ps_contract_disdetto_${m}`,JSON.stringify(contractDisdetto));
 }
 function togglePagato(nome,checked){
   clientePagato[nome]=checked;
@@ -618,12 +650,19 @@ document.addEventListener('DOMContentLoaded',()=>{
   loadClientePagato();
   document.getElementById('today-label').textContent=
     new Date().toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-  setupDrop(); renderAll();
+  setupDrop();
+  // Apri il mese corrente di default
+  const meseOggi=String(new Date().getMonth()+1).padStart(2,'0');
+  // Apri il menu polizze
+  document.getElementById('nav-polizze-sub')?.classList.add('open');
+  document.getElementById('nav-polizze-chevron')?.classList.add('open');
+  showMese(meseOggi);
 });
 
 // ── STORAGE ──
 function loadStorage(){
-  const p=localStorage.getItem('ps_pol'); if(p) polizze=JSON.parse(p);
+  const key=meseAttivo?`ps_pol_${meseAttivo}`:'ps_pol';
+  const p=localStorage.getItem(key); if(p) polizze=JSON.parse(p);
   const c=localStorage.getItem('ps_cfg'); if(c){const j=JSON.parse(c);SURL=j.url||'';SKEY=j.key||'';}
   const s=localStorage.getItem('ps_set');
   if(s){
@@ -642,18 +681,21 @@ function loadStorage(){
 function saveStorage(){localStorage.setItem('ps_pol',JSON.stringify(polizze));}
 
 // ── SUPABASE ──
-async function fetchSupa(){
+async function fetchSupa(mese){
+  if(!SURL||!SKEY) return;
   try{
-    const r=await fetch(`${SURL}/rest/v1/polizze?select=*&order=scadenza.asc`,{headers:{apikey:SKEY,Authorization:`Bearer ${SKEY}`}});
+    const q=mese?`mese=eq.${mese}&`:'';
+    const r=await fetch(`${SURL}/rest/v1/polizze?${q}select=*&order=scadenza.asc`,{headers:{apikey:SKEY,Authorization:`Bearer ${SKEY}`}});
     if(!r.ok) throw 0;
     polizze=await r.json(); saveStorage(); setConn(true); renderAll();
   }catch{setConn(false);}
 }
 async function upsertSupa(pol){
   if(!supaConn)return;
+  const payload={...pol, mese:meseAttivo||pol.mese||''};
   await fetch(`${SURL}/rest/v1/polizze`,{method:'POST',
     headers:{apikey:SKEY,Authorization:`Bearer ${SKEY}`,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates'},
-    body:JSON.stringify(pol)});
+    body:JSON.stringify(payload)});
 }
 async function deleteSupa(id){
   if(!supaConn)return;
@@ -1070,6 +1112,7 @@ async function savePolizza(){
   if(!g('f-numero')||!g('f-ragione_sociale')||!g('f-scadenza')){showToast('Compila i campi obbligatori (*)','error');return;}
   const pol={id:editingId||crypto.randomUUID()};
   FIELDS.forEach(f=>pol[f]=g('f-'+f));
+  pol.mese=meseAttivo;
   polizze=editingId?polizze.map(p=>p.id===editingId?pol:p):[...polizze,pol];
   saveStorage(); await upsertSupa(pol); closeModal('modal-polizza'); renderAll();
   showToast(editingId?'Contratto aggiornato':'Contratto aggiunto','success');
@@ -1203,6 +1246,7 @@ function parseCSV(text){
     const get=k=>colIdx[k]!==undefined?(c[colIdx[k]]||'').trim():'';
     return{
       id:crypto.randomUUID(),
+      mese:meseAttivo,
       numero:get('numero'), ragione_sociale:get('ragione_sociale'),
       prodotto:get('prodotto'), pv_contratto:get('pv_contratto'),
       frazionamento:get('frazionamento'),
@@ -1359,6 +1403,7 @@ function parseCSV(text){
     const get=k=>colIdx[k]!==undefined?(c[colIdx[k]]||'').trim():'';
     return{
       id:crypto.randomUUID(),
+      mese:meseAttivo,
       numero:get('numero'), ragione_sociale:get('ragione_sociale'),
       prodotto:get('prodotto'), pv_contratto:get('pv_contratto'),
       frazionamento:get('frazionamento'),
@@ -1411,14 +1456,49 @@ function saveSettings(){
 }
 
 // ── NAV ──
+function togglePolizzeMenu(){
+  const sub=document.getElementById('nav-polizze-sub');
+  const chev=document.getElementById('nav-polizze-chevron');
+  const isOpen=sub.classList.contains('open');
+  sub.classList.toggle('open',!isOpen);
+  chev.classList.toggle('open',!isOpen);
+}
+
+function showMese(key){
+  // key = '01'..'12'
+  const anno='2026';
+  meseAttivo=`${anno}-${key}`;
+  // Reset state for this month
+  polizze=[];
+  loadClientePagato();
+  // Load from localStorage first, then sync from Supabase
+  loadStorage();
+  renderAll();
+  if(supaConn) fetchSupa(meseAttivo);
+  // Update nav
+  document.querySelectorAll('.nav-sub-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('nav-mese-'+key)?.classList.add('active');
+  document.querySelectorAll('.nav-parent').forEach(n=>n.classList.remove('active'));
+  document.getElementById('nav-polizze-parent')?.classList.add('active');
+  // Make sure polizze page is visible
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-polizze')?.classList.add('active');
+  // Update page subtitle
+  const mesiNomi=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+    'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const sub2=document.getElementById('polizze-subtitle');
+  if(sub2) sub2.textContent=mesiNomi[parseInt(key)-1]+' '+anno;
+}
+
 function showPage(name){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-item,.nav-sub-item,.nav-parent').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name)?.classList.add('active');
-  const map={dashboard:0,polizze:1,scadenze:2,import:3,settings:4};
+  const map={dashboard:0,scadenze:1,import:2,settings:3};
   const items=document.querySelectorAll('.nav-item');
   if(items[map[name]]!==undefined)items[map[name]].classList.add('active');
   if(name==='scadenze')renderScad();
+  if(name==='dashboard'){meseAttivo='';polizze=[];loadStorage();renderAll();if(supaConn)fetchSupa('');}
 }
 
 // ── UTILS ──
