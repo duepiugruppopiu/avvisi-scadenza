@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -499,37 +498,67 @@ let meseAttivo='';  // es. '2026-03' — mese attualmente visualizzato
 let sortCol='scadenza',sortDir=1,currentPage=1;
 let PAGE=20;
 let SURL='https://slxzgxzssxubjbmhopwm.supabase.co',SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNseHpneHpzc3h1YmpibWhvcHdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDA3MjAsImV4cCI6MjA4OTU3NjcyMH0.orMaS2_XDi8X2SFUzGK7qM03bhpgvXn32SLy9KGIbrM',supaConn=false,currentMailto='';
-let clientePagato={};    // ragione_sociale -> bool
-let convPagato={};       // ragione_sociale -> bool
-let intermPagato={};     // ragione_sociale -> bool
-let contractPagato={};   // polizza.id -> bool
-let contractDisdetto={};  // polizza.id -> bool
+// Stato pagamenti — derivato dai campi pagato/disdetto/conv_pagato/interm_pagato su ogni polizza
+// Non serve più localStorage per i pagamenti — tutto su Supabase
 
-function loadClientePagato(){
-  const m=meseAttivo||'_';
-  clientePagato=JSON.parse(localStorage.getItem(`ps_pagato_${m}`)||'{}');
-  convPagato=JSON.parse(localStorage.getItem(`ps_conv_pagato_${m}`)||'{}');
-  intermPagato=JSON.parse(localStorage.getItem(`ps_interm_pagato_${m}`)||'{}');
-  contractPagato=JSON.parse(localStorage.getItem(`ps_contract_pagato_${m}`)||'{}');
-  contractDisdetto=JSON.parse(localStorage.getItem(`ps_contract_disdetto_${m}`)||'{}');
+function getContractPagato(id){ const p=polizze.find(x=>x.id===id); return !!(p&&p.pagato); }
+function getContractDisdetto(id){ const p=polizze.find(x=>x.id===id); return !!(p&&p.disdetto); }
+function getConvPagato(nome){ return polizze.filter(p=>p.ragione_sociale===nome).some(p=>p.conv_pagato); }
+function getIntermPagato(nome){ return polizze.filter(p=>p.ragione_sociale===nome).some(p=>p.interm_pagato); }
+function isClientePagato(nome){
+  const pols=polizze.filter(p=>p.ragione_sociale===nome);
+  return pols.length>0 && pols.every(p=>p.pagato||p.disdetto);
 }
-function saveClientePagato(){
-  const m=meseAttivo||'_';
-  localStorage.setItem(`ps_pagato_${m}`,JSON.stringify(clientePagato));
-  localStorage.setItem(`ps_conv_pagato_${m}`,JSON.stringify(convPagato));
-  localStorage.setItem(`ps_interm_pagato_${m}`,JSON.stringify(intermPagato));
-  localStorage.setItem(`ps_contract_pagato_${m}`,JSON.stringify(contractPagato));
-  localStorage.setItem(`ps_contract_disdetto_${m}`,JSON.stringify(contractDisdetto));
+
+function loadClientePagato(){} // no-op: stato derivato da polizze
+function saveClientePagato(){} // no-op: salvato su Supabase via patchPolizza
+
+// Genera ID deterministico da numero contratto + mese (evita duplicati)
+function makeId(numero, mese){
+  const key=(numero||'')+'__'+(mese||'');
+  // Simple hash to UUID-like string
+  let h=0;
+  for(let i=0;i<key.length;i++){ h=((h<<5)-h)+key.charCodeAt(i); h|=0; }
+  const hex=Math.abs(h).toString(16).padStart(8,'0');
+  return `${hex}-0000-0000-0000-${Date.now().toString(16).padStart(12,'0').slice(-12)}`;
+}
+function makeStableId(numero, mese){
+  // Fully deterministic: same numero+mese always gives same id
+  const key=(numero||'').trim().toLowerCase()+'|'+(mese||'').trim();
+  let h1=0x9e3779b9, h2=0x6c62272e;
+  for(let i=0;i<key.length;i++){
+    const c=key.charCodeAt(i);
+    h1=Math.imul(h1^c,0x9e3779b9)>>>0;
+    h2=Math.imul(h2^c,0x6c62272e)>>>0;
+  }
+  const p1=h1.toString(16).padStart(8,'0');
+  const p2=h2.toString(16).padStart(8,'0');
+  return `${p1}-${p2.slice(0,4)}-4${p2.slice(4,7)}-8${p2.slice(0,3)}-${p1}${p2.slice(0,4)}`;
+}
+
+async function patchPolizza(id, fields){
+  // Aggiorna il record locale
+  polizze=polizze.map(p=>p.id===id?{...p,...fields}:p);
+  saveStorage();
+  // Aggiorna su Supabase
+  if(!supaConn) return;
+  try{
+    await fetch(`${SURL}/rest/v1/polizze?id=eq.${id}`,{
+      method:'PATCH',
+      headers:{apikey:SKEY,Authorization:`Bearer ${SKEY}`,'Content-Type':'application/json'},
+      body:JSON.stringify(fields)
+    });
+  }catch(e){ console.error('patch error',e); }
 }
 function togglePagato(nome,checked){
-  clientePagato[nome]=checked;
-  if(checked){ convPagato[nome]=true; intermPagato[nome]=true; }
-  else { convPagato[nome]=false; intermPagato[nome]=false; }
-  // Aggiorna anche tutti i contratti del cliente (non tocca mai il flag disdetto)
-  polizze.filter(p=>p.ragione_sociale===nome).forEach(p=>{
-    contractPagato[p.id]=checked;
+  // Aggiorna tutti i contratti del cliente (non tocca disdetto)
+  const patches=polizze.filter(p=>p.ragione_sociale===nome).map(p=>{
+    const fields={pagato:checked};
+    if(checked){ fields.conv_pagato=true; fields.interm_pagato=true; }
+    else { fields.conv_pagato=false; fields.interm_pagato=false; }
+    patchPolizza(p.id, fields);
+    return p.id;
   });
-  saveClientePagato();
   updateRowPaid(nome, checked);
   renderDash();
   renderScad();
@@ -541,7 +570,7 @@ function updateRowPaid(nome, paid){
   if(!row)return;
   row.classList.remove('row-paid','row-disdetto');
   const tuttiPol=polizze.filter(p=>p.ragione_sociale===nome);
-  const tuttiDisdetti=tuttiPol.length>0&&tuttiPol.every(p=>contractDisdetto[p.id]);
+  const tuttiDisdetti=tuttiPol.length>0&&tuttiPol.every(p=>p.disdetto);
   if(paid && !tuttiDisdetti){ row.classList.add('row-paid'); }
   else if(tuttiDisdetti){ row.classList.add('row-disdetto'); }
   // Aggiorna cella stato (3a cella, indice 2)
@@ -559,7 +588,7 @@ function updateRowPaid(nome, paid){
     }
   }
   // Aggiorna badge sidebar
-  const urg=polizze.filter(p=>['1','ov7','ov14','ov20','ov25'].includes(fascia(p.scadenza).key)&&!clientePagato[p.ragione_sociale]).length;
+  const urg=polizze.filter(p=>['1','ov7','ov14','ov20','ov25'].includes(fascia(p.scadenza).key)&&!isClientePagato(p.ragione_sociale)).length;
   const bd=document.getElementById('badge-scad');
   if(bd){ bd.style.display=urg?'inline':'none'; bd.textContent=urg; }
 }
@@ -574,49 +603,41 @@ function updateSubCheckboxes(nome, paid){
   document.querySelectorAll('input.pay-contract[data-nome]').forEach(c=>{
     if(c.dataset.nome===nome) c.checked=paid;
   });
+  // Aggiorna anche i dati locali
+  renderDash();
 }
 function toggleContract(id, nome, checked){
-  contractPagato[id]=checked;
-  // Se pagato, rimuovi disdetto
-  if(checked) contractDisdetto[id]=false;
-  aggiornaStatoCliente(nome);
-  saveClientePagato();
-  // Aggiorna visivamente la riga contratto
-  updateContractRow(id);
-  renderDash();
+  const fields={pagato:checked};
+  if(checked) fields.disdetto=false;
+  patchPolizza(id, fields).then(()=>{
+    aggiornaStatoCliente(nome);
+    updateContractRow(id);
+    renderDash();
+  });
 }
 function toggleDisdetto(id, nome, checked){
-  contractDisdetto[id]=checked;
-  // Se disdetto, rimuovi pagato
-  if(checked) contractPagato[id]=false;
-  aggiornaStatoCliente(nome);
-  saveClientePagato();
-  // Aggiorna visivamente la riga contratto
-  updateContractRow(id);
-  renderDash();
+  const fields={disdetto:checked};
+  if(checked) fields.pagato=false;
+  patchPolizza(id, fields).then(()=>{
+    aggiornaStatoCliente(nome);
+    updateContractRow(id);
+    renderDash();
+  });
 }
 function aggiornaStatoCliente(nome){
-  const tuttiPol=polizze.filter(p=>p.ragione_sociale===nome);
-  if(!tuttiPol.length) return;
-  // Pagato se tutti i contratti sono pagati O disdetti (e almeno uno pagato o tutti disdetti)
-  const tuttiRisolti=tuttiPol.every(p=>contractPagato[p.id]||contractDisdetto[p.id]);
-  const clientePagatoVal=tuttiRisolti;
-  clientePagato[nome]=clientePagatoVal;
-  if(clientePagatoVal){ convPagato[nome]=true; intermPagato[nome]=true; }
-  else { convPagato[nome]=false; intermPagato[nome]=false; }
-  // Aggiorna checkbox principale
+  const paid=isClientePagato(nome);
   const rowId='crow-'+btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'');
   const mainCb=document.querySelector('#'+rowId+' input.pay-main');
-  if(mainCb) mainCb.checked=clientePagatoVal;
-  updateRowPaid(nome, clientePagatoVal);
+  if(mainCb) mainCb.checked=paid;
+  updateRowPaid(nome, paid);
 }
 function updateContractRow(id){
-  // Trova la riga del contratto e aggiorna il colore
   const cb=document.querySelector(`input.pay-contract[data-id="${id}"]`);
   if(!cb) return;
   const row=cb.closest('tr');
   if(!row) return;
-  const isDis=!!contractDisdetto[id];
+  const isDis=getContractDisdetto(id);
+  const isPaid=getContractPagato(id);
   if(isDis){
     row.style.background='rgba(185,28,28,0.08)';
     row.querySelectorAll('td').forEach(td=>td.style.color='var(--r7)');
@@ -624,23 +645,18 @@ function updateContractRow(id){
     row.style.background='';
     row.querySelectorAll('td').forEach(td=>td.style.color='');
   }
-  // Aggiorna checkbox pagato nella stessa riga
   const payCb=row.querySelector('input.pay-contract');
-  if(payCb) payCb.checked=!!contractPagato[id];
+  if(payCb) payCb.checked=isPaid;
   const disCb=row.querySelector('input.dis-contract');
-  if(disCb) disCb.checked=!!contractDisdetto[id];
+  if(disCb) disCb.checked=isDis;
 }
 function toggleConv(nome,checked){
-  convPagato[nome]=checked;
-  saveClientePagato();
+  polizze.filter(p=>p.ragione_sociale===nome).forEach(p=>patchPolizza(p.id,{conv_pagato:checked}));
   renderDash();
-  // Non ri-renderizza la tabella per non chiudere i menu aperti
 }
 function toggleInterm(nome,checked){
-  intermPagato[nome]=checked;
-  saveClientePagato();
+  polizze.filter(p=>p.ragione_sociale===nome).forEach(p=>patchPolizza(p.id,{interm_pagato:checked}));
   renderDash();
-  // Non ri-renderizza la tabella per non chiudere i menu aperti
 }
 const settings={emailNome:'',emailFrom:'',emailSubject:'Avviso scadenza polizza n° {NUMERO}',tpl:{}};
 
@@ -820,8 +836,8 @@ function groupByCliente(){
   });
   let groups=Object.values(map);
   // Filter by stato (pagato / non_pagato)
-  if(fst==='pagato') groups=groups.filter(g=>!!clientePagato[g.ragione_sociale]);
-  else if(fst==='non_pagato') groups=groups.filter(g=>!clientePagato[g.ragione_sociale]);
+  if(fst==='pagato') groups=groups.filter(g=>isClientePagato(g.ragione_sociale));
+  else if(fst==='non_pagato') groups=groups.filter(g=>!isClientePagato(g.ragione_sociale));
   // Sort
   const sortScad=document.getElementById('sort-scad')?.value||'';
   if(sortScad==='alfa-az'){
@@ -899,11 +915,11 @@ function renderTable(){
 
     // CLIENT ROW
     const rowId='crow-'+btoa(unescape(encodeURIComponent(g.ragione_sociale))).replace(/[^a-zA-Z0-9]/g,'');
-    const isPaid=!!clientePagato[g.ragione_sociale];
-    const isConvPaid=!!convPagato[g.ragione_sociale];
-    const isIntermPaid=!!intermPagato[g.ragione_sociale];
+    const isPaid=isClientePagato(g.ragione_sociale);
+    const isConvPaid=getConvPagato(g.ragione_sociale);
+    const isIntermPaid=getIntermPagato(g.ragione_sociale);
     const tuttiPolCliente=polizze.filter(p=>p.ragione_sociale===g.ragione_sociale);
-    const tuttiDis=tuttiPolCliente.length>0&&tuttiPolCliente.every(p=>contractDisdetto[p.id]);
+    const tuttiDis=tuttiPolCliente.length>0&&tuttiPolCliente.every(p=>p.disdetto);
     const statoCell=tuttiDis
       ? `<span class="chip" style="background:var(--r7-bg);color:var(--r7)">Disdetto</span>`
       : isPaid
@@ -945,8 +961,8 @@ function renderTable(){
         <tbody>`;
     g.polizze.sort((a,b)=>new Date(a.scadenza)-new Date(b.scadenza)).forEach(p=>{
       const f=fascia(p.scadenza);
-      const isContractPaid=!!contractPagato[p.id];
-      const isContractDis=!!contractDisdetto[p.id];
+      const isContractPaid=!!p.pagato;
+      const isContractDis=!!p.disdetto;
       html+=`<tr class="sub-row${isContractDis?' disdetto':''}">
         <td style="text-align:center;padding-left:4px;white-space:nowrap" onclick="event.stopPropagation()">
           <input type="checkbox" class="pay-check pay-contract" ${isContractPaid?'checked':''}
@@ -1004,23 +1020,23 @@ function renderDash(){
   const fin=new Date(h.getFullYear(),h.getMonth()+1,0);
 
   // Split paid vs unpaid
-  const unpaid=polizze.filter(p=>!clientePagato[p.ragione_sociale]);
-  const paidClients=Object.keys(clientePagato).filter(k=>clientePagato[k]);
+  const unpaid=polizze.filter(p=>!isClientePagato(p.ragione_sociale));
+  const clientiUnici=[...new Set(polizze.map(p=>p.ragione_sociale))];
+  const paidClients=clientiUnici.filter(n=>isClientePagato(n));
 
   document.getElementById('s-tot').textContent=polizze.length;
   document.getElementById('s-scad').textContent=unpaid.filter(p=>['10','1'].includes(fascia(p.scadenza).key)).length;
   document.getElementById('s-over').textContent=unpaid.filter(p=>['ov7','ov14','ov20','ov25'].includes(fascia(p.scadenza).key)).length;
-  const paidContractsCount=polizze.filter(p=>contractPagato[p.id]&&!contractDisdetto[p.id]).length;
+  const paidContractsCount=polizze.filter(p=>p.pagato&&!p.disdetto).length;
   document.getElementById('s-paid').textContent=paidContractsCount;
 
   const mesePol=polizze.filter(p=>{const d=new Date(p.scadenza);return d>=ini&&d<=fin;});
   const pr=mesePol.reduce((s,p)=>s+(parseFloat(p.premio_rata)||0),0);
   // Conv: da incassare (convPagato=false) vs incassato (convPagato=true)
-  const convDa=polizze.filter(p=>!convPagato[p.ragione_sociale]).reduce((s,p)=>s+(parseFloat(p.quota_convenzione)||0),0);
-  const convPaid=polizze.filter(p=>!!convPagato[p.ragione_sociale]).reduce((s,p)=>s+(parseFloat(p.quota_convenzione)||0),0);
-  // Interm: da incassare vs incassato
-  const intermDa=polizze.filter(p=>!intermPagato[p.ragione_sociale]).reduce((s,p)=>s+(parseFloat(p.att_intermediazione)||0),0);
-  const intermPaid=polizze.filter(p=>!!intermPagato[p.ragione_sociale]).reduce((s,p)=>s+(parseFloat(p.att_intermediazione)||0),0);
+  const convDa=polizze.filter(p=>!p.conv_pagato).reduce((s,p)=>s+(parseFloat(p.quota_convenzione)||0),0);
+  const convPaid=polizze.filter(p=>!!p.conv_pagato).reduce((s,p)=>s+(parseFloat(p.quota_convenzione)||0),0);
+  const intermDa=polizze.filter(p=>!p.interm_pagato).reduce((s,p)=>s+(parseFloat(p.att_intermediazione)||0),0);
+  const intermPaid=polizze.filter(p=>!!p.interm_pagato).reduce((s,p)=>s+(parseFloat(p.att_intermediazione)||0),0);
   document.getElementById('s-premi').textContent='€'+pr.toLocaleString('it-IT',{minimumFractionDigits:0});
   document.getElementById('s-conv').textContent='€'+convDa.toLocaleString('it-IT',{minimumFractionDigits:0});
   document.getElementById('s-conv-paid').textContent='€'+convPaid.toLocaleString('it-IT',{minimumFractionDigits:0});
@@ -1059,7 +1075,7 @@ function renderScad(){
   const grouped={};keys.forEach(k=>grouped[k]=[]);
   const paidPols=[];
   polizze.forEach(p=>{
-    if(clientePagato[p.ragione_sociale]){ paidPols.push(p); return; }
+    if(isClientePagato(p.ragione_sociale)){ paidPols.push(p); return; }
     const k=fascia(p.scadenza).key;if(grouped[k])grouped[k].push(p);
   });
 
@@ -1106,10 +1122,11 @@ function renderScad(){
   }
 
   document.getElementById('scad-sections').innerHTML=html;
+  const clientiUnici=[...new Set(polizze.map(p=>p.ragione_sociale))];
   document.getElementById('ss-10').textContent=grouped['10'].length+grouped['1'].length;
   document.getElementById('ss-over').textContent=['ov7','ov14','ov20','ov25'].reduce((s,k)=>s+grouped[k].length,0);
-  document.getElementById('ss-ok').textContent=polizze.filter(p=>fascia(p.scadenza).key==='ok'&&!clientePagato[p.ragione_sociale]).length;
-  document.getElementById('ss-paid').textContent=Object.keys(clientePagato).filter(k=>clientePagato[k]).length;
+  document.getElementById('ss-ok').textContent=polizze.filter(p=>fascia(p.scadenza).key==='ok'&&!isClientePagato(p.ragione_sociale)).length;
+  document.getElementById('ss-paid').textContent=clientiUnici.filter(n=>isClientePagato(n)).length;
 }
 
 // ── MODAL CONTRATTO ──
@@ -1129,7 +1146,11 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 async function savePolizza(){
   const g=id=>document.getElementById(id)?.value?.trim()||'';
   if(!g('f-numero')||!g('f-ragione_sociale')||!g('f-scadenza')){showToast('Compila i campi obbligatori (*)','error');return;}
-  const pol={id:editingId||crypto.randomUUID()};
+  const g_numero=document.getElementById('f-numero')?.value?.trim()||'';
+  const g_scad=document.getElementById('f-scadenza')?.value||'';
+  const g_mese=getMeseFromScadenza(g_scad)||meseAttivo;
+  const stableId=g_numero&&g_mese?makeStableId(g_numero,g_mese):crypto.randomUUID();
+  const pol={id:editingId||stableId};
   FIELDS.forEach(f=>pol[f]=g('f-'+f));
   pol.mese=getMeseFromScadenza(pol.scadenza)||meseAttivo;
   polizze=editingId?polizze.map(p=>p.id===editingId?pol:p):[...polizze,pol];
@@ -1264,7 +1285,6 @@ function parseCSV(text){
     const c=line.split(sep).map(v=>v.trim().replace(/^"|"$/g,''));
     const get=k=>colIdx[k]!==undefined?(c[colIdx[k]]||'').trim():'';
     return{
-      id:crypto.randomUUID(),
       mese:'', // verrà calcolato sotto
       numero:get('numero'), ragione_sociale:get('ragione_sociale'),
       prodotto:get('prodotto'), pv_contratto:get('pv_contratto'),
@@ -1276,6 +1296,8 @@ function parseCSV(text){
     };
     // Calcola mese dalla scadenza
     obj.mese = getMeseFromScadenza(obj.scadenza)||meseAttivo;
+    // ID deterministico: stesso numero+mese = stesso record (no duplicati)
+    obj.id = makeStableId(obj.numero, obj.mese);
     return obj;
   }).filter(p=>p.ragione_sociale||p.numero);
 
@@ -1424,7 +1446,6 @@ function parseCSV(text){
     const c=line.split(sep).map(v=>v.trim().replace(/^"|"$/g,''));
     const get=k=>colIdx[k]!==undefined?(c[colIdx[k]]||'').trim():'';
     return{
-      id:crypto.randomUUID(),
       mese:'', // verrà calcolato sotto
       numero:get('numero'), ragione_sociale:get('ragione_sociale'),
       prodotto:get('prodotto'), pv_contratto:get('pv_contratto'),
@@ -1488,7 +1509,7 @@ function togglePolizzeMenu(){
 
 function showMese(key){
   // key = '01'..'12'
-  const anno='2026';
+  const anno=new Date().getFullYear().toString();
   meseAttivo=`${anno}-${key}`;
   // Reset state for this month
   polizze=[];
