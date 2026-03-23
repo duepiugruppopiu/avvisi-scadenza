@@ -778,7 +778,7 @@ function renderTable(){
     const statoCell=isPaid
       ? `<span class="chip-pagato">Pagato</span>`
       : `<span class="chip ${mu.cls}">${mu.label}</span>`;
-    const nome_esc=jsq(g.ragione_sociale);
+    const nome_esc=esc(g.ragione_sociale);
     html+=`<tr class="client-row${isPaid?' row-paid':''}" id="${rowId}">
       <td style="text-align:center" onclick="toggleCliente('${uid}')"><span class="chevron" id="chev-${uid}">${SVG_CHEVRON}</span></td>
       <td onclick="toggleCliente('${uid}')"><div class="td-name">${esc(g.ragione_sociale)}</div><div class="td-sub">${g.email?esc(g.email):''}</div></td>
@@ -786,11 +786,12 @@ function renderTable(){
       <td onclick="toggleCliente('${uid}')" style="color:var(--text-mid);font-size:12px">${g.polizze.length} contratt${g.polizze.length===1?'o':'i'}</td>
       <td onclick="toggleCliente('${uid}')" class="td-amt" style="color:var(--ok)">${totStr}</td>
       <td style="text-align:center" onclick="event.stopPropagation()">
-        <input type="checkbox" class="pay-check" ${isPaid?'checked':''} title="Pagato"
-          onchange="togglePagato('${nome_esc}',this.checked)">
+        <input type="checkbox" class="pay-check pay-main" ${isPaid?'checked':''} title="Pagato"
+          data-nome="${g.ragione_sociale.replace(/"/g,'&quot;')}"
+          onchange="togglePagato(this.dataset.nome,this.checked)">
       </td>
-      <td>${canEmail?`<button class="btn-email" onclick="prepEmailCliente('${nome_esc}')">${SVG_MAIL} Email</button>`:'<span style="color:var(--text-dim);font-size:11px">—</span>'}</td>
-      <td><button class="btn btn-primary" style="padding:5px 10px;font-size:11px" onclick="openModal('add');prefillCliente('${nome_esc}','${esc(g.email||'')}')">+ Contratto</button></td>
+      <td>${canEmail?`<button class="btn-email" data-nome="${g.ragione_sociale.replace(/"/g,'&quot;')}" onclick="prepEmailCliente(this.dataset.nome)">${SVG_MAIL} Email</button>`:'<span style="color:var(--text-dim);font-size:11px">—</span>'}</td>
+      <td><button class="btn btn-primary" style="padding:5px 10px;font-size:11px" data-nome="${g.ragione_sociale.replace(/"/g,'&quot;')}" data-email="${(g.email||'').replace(/"/g,'&quot;')}" onclick="openModal('add');prefillCliente(this.dataset.nome,this.dataset.email)">+ Contratto</button></td>
     </tr>`;
 
     // SUB-ROWS (polizze del cliente)
@@ -805,8 +806,8 @@ function renderTable(){
           <th class="sub-header">Frazionamento</th>
           <th class="sub-header">Scadenza</th>
           <th class="sub-header">Premio Rata</th>
-          <th class="sub-header">Att. Interm. <input type="checkbox" class="pay-check" ${isIntermPaid?'checked':''} title="Incassata" onclick="event.stopPropagation()" onchange="toggleInterm('${nome_esc}',this.checked)" style="margin-left:4px"></th>
-          <th class="sub-header">Quota Conv. <input type="checkbox" class="pay-check" ${isConvPaid?'checked':''} title="Incassata" onclick="event.stopPropagation()" onchange="toggleConv('${nome_esc}',this.checked)" style="margin-left:4px"></th>
+          <th class="sub-header">Att. Interm. <input type="checkbox" class="pay-check" ${isIntermPaid?'checked':''} title="Incassata" onclick="event.stopPropagation()" data-nome="${g.ragione_sociale.replace(/"/g,'&quot;')}" onchange="toggleInterm(this.dataset.nome,this.checked)" style="margin-left:4px"></th>
+          <th class="sub-header">Quota Conv. <input type="checkbox" class="pay-check" ${isConvPaid?'checked':''} title="Incassata" onclick="event.stopPropagation()" data-nome="${g.ragione_sociale.replace(/"/g,'&quot;')}" onchange="toggleConv(this.dataset.nome,this.checked)" style="margin-left:4px"></th>
           <th class="sub-header">Premio Finale</th>
           <th class="sub-header">Azioni</th>
         </tr></thead>
@@ -1338,8 +1339,6 @@ function showPage(name){
 
 // ── UTILS ──
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-// Escape per uso dentro attributi JS inline (escapa apici singoli)
-function jsq(s){return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 </script>
 </body>
 </html>
