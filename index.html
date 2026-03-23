@@ -151,7 +151,7 @@
     <div class="stat-card"><div class="stat-label">Totale contratti</div><div class="stat-value" id="s-tot">0</div><div class="stat-sub">nel database</div></div>
     <div class="stat-card"><div class="stat-label">In scadenza</div><div class="stat-value" id="s-scad">0</div><div class="stat-sub">entro 10 giorni</div></div>
     <div class="stat-card"><div class="stat-label">Scaduti</div><div class="stat-value" id="s-over">0</div><div class="stat-sub">da gestire</div></div>
-    <div class="stat-card" style="border-top:3px solid #1a5c35"><div class="stat-label">Incassati</div><div class="stat-value" style="color:#1a5c35" id="s-paid">0</div><div class="stat-sub">clienti pagati</div></div>
+    <div class="stat-card" style="border-top:3px solid #1a5c35"><div class="stat-label">Incassati</div><div class="stat-value" style="color:#1a5c35" id="s-paid">0</div><div class="stat-sub">contratti pagati</div></div>
   </div>
   <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
     <div class="stat-card"><div class="stat-label">Premi rata del mese</div><div class="stat-value" id="s-premi">€0</div><div class="stat-sub">solo premio rata lordo</div></div>
@@ -466,31 +466,33 @@ let polizze=[],editingId=null,importBuffer=[];
 let sortCol='scadenza',sortDir=1,currentPage=1;
 let PAGE=20;
 let SURL='https://slxzgxzssxubjbmhopwm.supabase.co',SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNseHpneHpzc3h1YmpibWhvcHdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDA3MjAsImV4cCI6MjA4OTU3NjcyMH0.orMaS2_XDi8X2SFUzGK7qM03bhpgvXn32SLy9KGIbrM',supaConn=false,currentMailto='';
-let clientePagato={};   // ragione_sociale -> bool
-let convPagato={};      // ragione_sociale -> bool
-let intermPagato={};    // ragione_sociale -> bool
+let clientePagato={};    // ragione_sociale -> bool
+let convPagato={};       // ragione_sociale -> bool
+let intermPagato={};     // ragione_sociale -> bool
+let contractPagato={};   // polizza.id -> bool
 
 function loadClientePagato(){
   const s=localStorage.getItem('ps_pagato'); if(s) clientePagato=JSON.parse(s);
   const sc=localStorage.getItem('ps_conv_pagato'); if(sc) convPagato=JSON.parse(sc);
   const si=localStorage.getItem('ps_interm_pagato'); if(si) intermPagato=JSON.parse(si);
+  const sp=localStorage.getItem('ps_contract_pagato'); if(sp) contractPagato=JSON.parse(sp);
 }
 function saveClientePagato(){
   localStorage.setItem('ps_pagato',JSON.stringify(clientePagato));
   localStorage.setItem('ps_conv_pagato',JSON.stringify(convPagato));
   localStorage.setItem('ps_interm_pagato',JSON.stringify(intermPagato));
+  localStorage.setItem('ps_contract_pagato',JSON.stringify(contractPagato));
 }
 function togglePagato(nome,checked){
   clientePagato[nome]=checked;
-  // Auto-check conv e interm quando si segna pagato, auto-deseleziona quando si deseleziona
   if(checked){ convPagato[nome]=true; intermPagato[nome]=true; }
   else { convPagato[nome]=false; intermPagato[nome]=false; }
+  // Aggiorna anche tutti i contratti del cliente
+  polizze.filter(p=>p.ragione_sociale===nome).forEach(p=>{ contractPagato[p.id]=checked; });
   saveClientePagato();
-  // Aggiorna visivamente la riga senza ri-renderizzare (così non chiude i menu aperti)
   updateRowPaid(nome, checked);
   renderDash();
   renderScad();
-  // Aggiorna i checkbox secondari nella sub-row se aperta
   updateSubCheckboxes(nome, checked);
 }
 function updateRowPaid(nome, paid){
@@ -519,18 +521,31 @@ function updateRowPaid(nome, paid){
   if(bd){ bd.style.display=urg?'inline':'none'; bd.textContent=urg; }
 }
 function updateSubCheckboxes(nome, paid){
-  // Trova le sub-row checkboxes di conv e interm per questo cliente
-  // Le checkbox sono negli header della sub-table
-  const tables=document.querySelectorAll('tr[id^="sub-"] table');
-  tables.forEach(t=>{
-    const checks=t.querySelectorAll('input.pay-check');
-    checks.forEach(c=>{
-      const onch=c.getAttribute('onchange')||'';
-      if(onch.includes("'"+nome.replace(/'/g,"\'")+"'")){
-        c.checked=paid;
-      }
-    });
+  // Usa data-nome per trovare le checkbox secondarie (gestisce apostrofi)
+  document.querySelectorAll('input.pay-check[data-nome]').forEach(c=>{
+    if(c.dataset.nome===nome && !c.classList.contains('pay-main') && !c.classList.contains('pay-contract')){
+      c.checked=paid;
+    }
   });
+  // Aggiorna anche i checkbox per contratto
+  document.querySelectorAll('input.pay-contract[data-nome]').forEach(c=>{
+    if(c.dataset.nome===nome) c.checked=paid;
+  });
+}
+function toggleContract(id, nome, checked){
+  contractPagato[id]=checked;
+  // Controlla se tutti i contratti del cliente sono pagati
+  const tuttiPol=polizze.filter(p=>p.ragione_sociale===nome);
+  const tuttiPagati=tuttiPol.length>0 && tuttiPol.every(p=>contractPagato[p.id]);
+  clientePagato[nome]=tuttiPagati;
+  if(tuttiPagati){ convPagato[nome]=true; intermPagato[nome]=true; }
+  saveClientePagato();
+  // Aggiorna checkbox principale
+  const rowId='crow-'+btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'');
+  const mainCb=document.querySelector('#'+rowId+' input.pay-main');
+  if(mainCb) mainCb.checked=tuttiPagati;
+  updateRowPaid(nome, tuttiPagati);
+  renderDash();
 }
 function toggleConv(nome,checked){
   convPagato[nome]=checked;
@@ -799,7 +814,7 @@ function renderTable(){
     html+=`<tr id="${subId}" style="display:none"><td colspan="8" style="padding:0">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
-          <th class="sub-header" style="width:28px"></th>
+          <th class="sub-header" style="width:36px">Pag.</th>
           <th class="sub-header">N° Contratto</th>
           <th class="sub-header">Prodotto</th>
           <th class="sub-header">PV Contratto</th>
@@ -814,8 +829,15 @@ function renderTable(){
         <tbody>`;
     g.polizze.sort((a,b)=>new Date(a.scadenza)-new Date(b.scadenza)).forEach(p=>{
       const f=fascia(p.scadenza);
+      const isContractPaid=!!contractPagato[p.id];
       html+=`<tr class="sub-row">
-        <td></td>
+        <td style="text-align:center;padding-left:8px">
+          <input type="checkbox" class="pay-check pay-contract" ${isContractPaid?'checked':''}
+            data-id="${p.id}" data-nome="${g.ragione_sociale.replace(/"/g,'&quot;')}"
+            onclick="event.stopPropagation()"
+            onchange="toggleContract(this.dataset.id,this.dataset.nome,this.checked)"
+            title="Contratto pagato">
+        </td>
         <td><span class="td-mono" style="font-size:12px">${esc(p.numero||'')}</span></td>
         <td><span class="c-tag">${esc(p.prodotto||'')}</span></td>
         <td class="td-date">${esc(p.pv_contratto||'')}</td>
@@ -866,7 +888,8 @@ function renderDash(){
   document.getElementById('s-tot').textContent=polizze.length;
   document.getElementById('s-scad').textContent=unpaid.filter(p=>['10','1'].includes(fascia(p.scadenza).key)).length;
   document.getElementById('s-over').textContent=unpaid.filter(p=>['ov7','ov14','ov20','ov25'].includes(fascia(p.scadenza).key)).length;
-  document.getElementById('s-paid').textContent=paidClients.length;
+  const paidContractsCount=polizze.filter(p=>contractPagato[p.id]).length;
+  document.getElementById('s-paid').textContent=paidContractsCount;
 
   const mesePol=polizze.filter(p=>{const d=new Date(p.scadenza);return d>=ini&&d<=fin;});
   const pr=mesePol.reduce((s,p)=>s+(parseFloat(p.premio_rata)||0),0);
