@@ -661,8 +661,11 @@ document.addEventListener('DOMContentLoaded',()=>{
 
 // ── STORAGE ──
 function loadStorage(){
-  const key=meseAttivo?`ps_pol_${meseAttivo}`:'ps_pol';
-  const p=localStorage.getItem(key); if(p) polizze=JSON.parse(p);
+  // Load all polizze then filter by mese
+  const p=localStorage.getItem('ps_pol'); if(p){
+    const all=JSON.parse(p);
+    polizze=meseAttivo?all.filter(x=>x.mese===meseAttivo):all;
+  }
   const c=localStorage.getItem('ps_cfg'); if(c){const j=JSON.parse(c);SURL=j.url||'';SKEY=j.key||'';}
   const s=localStorage.getItem('ps_set');
   if(s){
@@ -676,9 +679,19 @@ function loadStorage(){
   // Credenziali hardcoded — connessione automatica
   document.getElementById('sup-url').value=SURL;
   document.getElementById('sup-key').value=SKEY;
-  fetchSupa();
+  if(meseAttivo) fetchSupa(meseAttivo); else fetchSupa('');
 }
-function saveStorage(){localStorage.setItem('ps_pol',JSON.stringify(polizze));}
+function saveStorage(){
+  if(meseAttivo){
+    // Merge: keep other months, replace current month
+    const stored=localStorage.getItem('ps_pol');
+    const all=stored?JSON.parse(stored):[];
+    const others=all.filter(x=>x.mese!==meseAttivo);
+    localStorage.setItem('ps_pol',JSON.stringify([...others,...polizze]));
+  } else {
+    localStorage.setItem('ps_pol',JSON.stringify(polizze));
+  }
+}
 
 // ── SUPABASE ──
 async function fetchSupa(mese){
@@ -690,9 +703,15 @@ async function fetchSupa(mese){
     polizze=await r.json(); saveStorage(); setConn(true); renderAll();
   }catch{setConn(false);}
 }
+function getMeseFromScadenza(scadenza){
+  if(!scadenza) return '';
+  const m=scadenza.match(/^(\d{4})-(\d{2})/);
+  return m ? m[0] : ''; // es. '2026-04'
+}
 async function upsertSupa(pol){
   if(!supaConn)return;
-  const payload={...pol, mese:meseAttivo||pol.mese||''};
+  const mese=getMeseFromScadenza(pol.scadenza)||meseAttivo||pol.mese||'';
+  const payload={...pol, mese};
   await fetch(`${SURL}/rest/v1/polizze`,{method:'POST',
     headers:{apikey:SKEY,Authorization:`Bearer ${SKEY}`,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates'},
     body:JSON.stringify(payload)});
@@ -1112,7 +1131,7 @@ async function savePolizza(){
   if(!g('f-numero')||!g('f-ragione_sociale')||!g('f-scadenza')){showToast('Compila i campi obbligatori (*)','error');return;}
   const pol={id:editingId||crypto.randomUUID()};
   FIELDS.forEach(f=>pol[f]=g('f-'+f));
-  pol.mese=meseAttivo;
+  pol.mese=getMeseFromScadenza(pol.scadenza)||meseAttivo;
   polizze=editingId?polizze.map(p=>p.id===editingId?pol:p):[...polizze,pol];
   saveStorage(); await upsertSupa(pol); closeModal('modal-polizza'); renderAll();
   showToast(editingId?'Contratto aggiornato':'Contratto aggiunto','success');
@@ -1246,7 +1265,7 @@ function parseCSV(text){
     const get=k=>colIdx[k]!==undefined?(c[colIdx[k]]||'').trim():'';
     return{
       id:crypto.randomUUID(),
-      mese:meseAttivo,
+      mese:'', // verrà calcolato sotto
       numero:get('numero'), ragione_sociale:get('ragione_sociale'),
       prodotto:get('prodotto'), pv_contratto:get('pv_contratto'),
       frazionamento:get('frazionamento'),
@@ -1255,6 +1274,9 @@ function parseCSV(text){
       quota_convenzione:pn(get('quota_convenzione')), premio_finale:pn(get('premio_finale')),
       email:get('email'), cellulare:get('cellulare'), telefono:get('telefono'),
     };
+    // Calcola mese dalla scadenza
+    obj.mese = getMeseFromScadenza(obj.scadenza)||meseAttivo;
+    return obj;
   }).filter(p=>p.ragione_sociale||p.numero);
 
   if(!importBuffer.length){showToast('Nessun record valido trovato','error');return;}
@@ -1403,7 +1425,7 @@ function parseCSV(text){
     const get=k=>colIdx[k]!==undefined?(c[colIdx[k]]||'').trim():'';
     return{
       id:crypto.randomUUID(),
-      mese:meseAttivo,
+      mese:'', // verrà calcolato sotto
       numero:get('numero'), ragione_sociale:get('ragione_sociale'),
       prodotto:get('prodotto'), pv_contratto:get('pv_contratto'),
       frazionamento:get('frazionamento'),
