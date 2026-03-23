@@ -113,6 +113,8 @@
   .client-row{cursor:pointer;} .client-row:hover td{background:var(--surface2);}
   .pay-check{width:16px;height:16px;cursor:pointer;accent-color:var(--ok);flex-shrink:0;}
   .row-paid td{background:rgba(45,122,79,0.18)!important;}
+  .row-disdetto td{background:rgba(185,28,28,0.08)!important;color:var(--r7)!important;}
+  .sub-row.disdetto td{background:rgba(185,28,28,0.06)!important;color:var(--r7)!important;}
   .row-paid td .td-name{color:var(--ok);}
   .chip-pagato{background:#1a5c35;color:#fff;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;}
   .sub-row-hidden{display:none;}
@@ -470,25 +472,31 @@ let clientePagato={};    // ragione_sociale -> bool
 let convPagato={};       // ragione_sociale -> bool
 let intermPagato={};     // ragione_sociale -> bool
 let contractPagato={};   // polizza.id -> bool
+let contractDisdetto={};  // polizza.id -> bool
 
 function loadClientePagato(){
   const s=localStorage.getItem('ps_pagato'); if(s) clientePagato=JSON.parse(s);
   const sc=localStorage.getItem('ps_conv_pagato'); if(sc) convPagato=JSON.parse(sc);
   const si=localStorage.getItem('ps_interm_pagato'); if(si) intermPagato=JSON.parse(si);
   const sp=localStorage.getItem('ps_contract_pagato'); if(sp) contractPagato=JSON.parse(sp);
+  const sd=localStorage.getItem('ps_contract_disdetto'); if(sd) contractDisdetto=JSON.parse(sd);
 }
 function saveClientePagato(){
   localStorage.setItem('ps_pagato',JSON.stringify(clientePagato));
   localStorage.setItem('ps_conv_pagato',JSON.stringify(convPagato));
   localStorage.setItem('ps_interm_pagato',JSON.stringify(intermPagato));
   localStorage.setItem('ps_contract_pagato',JSON.stringify(contractPagato));
+  localStorage.setItem('ps_contract_disdetto',JSON.stringify(contractDisdetto));
 }
 function togglePagato(nome,checked){
   clientePagato[nome]=checked;
   if(checked){ convPagato[nome]=true; intermPagato[nome]=true; }
   else { convPagato[nome]=false; intermPagato[nome]=false; }
   // Aggiorna anche tutti i contratti del cliente
-  polizze.filter(p=>p.ragione_sociale===nome).forEach(p=>{ contractPagato[p.id]=checked; });
+  polizze.filter(p=>p.ragione_sociale===nome).forEach(p=>{
+    contractPagato[p.id]=checked;
+    if(checked) contractDisdetto[p.id]=false;
+  });
   saveClientePagato();
   updateRowPaid(nome, checked);
   renderDash();
@@ -499,8 +507,11 @@ function updateRowPaid(nome, paid){
   const rowId='crow-'+btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'');
   const row=document.getElementById(rowId);
   if(!row)return;
-  if(paid){ row.classList.add('row-paid'); }
-  else { row.classList.remove('row-paid'); }
+  row.classList.remove('row-paid','row-disdetto');
+  const tuttiPol=polizze.filter(p=>p.ragione_sociale===nome);
+  const tuttiDisdetti=tuttiPol.length>0&&tuttiPol.every(p=>contractDisdetto[p.id]);
+  if(paid && !tuttiDisdetti){ row.classList.add('row-paid'); }
+  else if(tuttiDisdetti){ row.classList.add('row-disdetto'); }
   // Aggiorna cella stato (3a cella, indice 2)
   const cells=row.querySelectorAll('td');
   if(cells[2]){
@@ -534,18 +545,58 @@ function updateSubCheckboxes(nome, paid){
 }
 function toggleContract(id, nome, checked){
   contractPagato[id]=checked;
-  // Controlla se tutti i contratti del cliente sono pagati
-  const tuttiPol=polizze.filter(p=>p.ragione_sociale===nome);
-  const tuttiPagati=tuttiPol.length>0 && tuttiPol.every(p=>contractPagato[p.id]);
-  clientePagato[nome]=tuttiPagati;
-  if(tuttiPagati){ convPagato[nome]=true; intermPagato[nome]=true; }
+  // Se pagato, rimuovi disdetto
+  if(checked) contractDisdetto[id]=false;
+  aggiornaStatoCliente(nome);
   saveClientePagato();
+  // Aggiorna visivamente la riga contratto
+  updateContractRow(id);
+  renderDash();
+}
+function toggleDisdetto(id, nome, checked){
+  contractDisdetto[id]=checked;
+  // Se disdetto, rimuovi pagato
+  if(checked) contractPagato[id]=false;
+  aggiornaStatoCliente(nome);
+  saveClientePagato();
+  // Aggiorna visivamente la riga contratto
+  updateContractRow(id);
+  renderDash();
+}
+function aggiornaStatoCliente(nome){
+  const tuttiPol=polizze.filter(p=>p.ragione_sociale===nome);
+  if(!tuttiPol.length) return;
+  // Pagato se tutti i contratti sono pagati O disdetti (e almeno uno pagato o tutti disdetti)
+  const tuttiRisolti=tuttiPol.every(p=>contractPagato[p.id]||contractDisdetto[p.id]);
+  const clientePagatoVal=tuttiRisolti;
+  clientePagato[nome]=clientePagatoVal;
+  if(clientePagatoVal){ convPagato[nome]=true; intermPagato[nome]=true; }
+  else { convPagato[nome]=false; intermPagato[nome]=false; }
   // Aggiorna checkbox principale
   const rowId='crow-'+btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'');
   const mainCb=document.querySelector('#'+rowId+' input.pay-main');
-  if(mainCb) mainCb.checked=tuttiPagati;
-  updateRowPaid(nome, tuttiPagati);
-  renderDash();
+  if(mainCb) mainCb.checked=clientePagatoVal;
+  updateRowPaid(nome, clientePagatoVal);
+}
+function updateContractRow(id){
+  // Trova la riga del contratto e aggiorna il colore
+  const cb=document.querySelector(`input.pay-contract[data-id="${id}"]`);
+  if(!cb) return;
+  const row=cb.closest('tr');
+  if(!row) return;
+  const isDis=!!contractDisdetto[id];
+  if(isDis){
+    row.style.background='rgba(185,28,28,0.08)';
+    row.querySelectorAll('td').forEach(td=>td.style.color='var(--r7)');
+  } else {
+    row.style.background='';
+    row.querySelectorAll('td').forEach(td=>td.style.color='');
+  }
+  // Aggiorna checkbox pagato nella stessa riga
+  const payCb=row.querySelector('input.pay-contract');
+  if(payCb) payCb.checked=!!contractPagato[id];
+  const disCb=row.querySelector('input.dis-contract');
+  if(disCb) disCb.checked=!!contractDisdetto[id];
 }
 function toggleConv(nome,checked){
   convPagato[nome]=checked;
@@ -790,9 +841,13 @@ function renderTable(){
     const isPaid=!!clientePagato[g.ragione_sociale];
     const isConvPaid=!!convPagato[g.ragione_sociale];
     const isIntermPaid=!!intermPagato[g.ragione_sociale];
-    const statoCell=isPaid
-      ? `<span class="chip-pagato">Pagato</span>`
-      : `<span class="chip ${mu.cls}">${mu.label}</span>`;
+    const tuttiPolCliente=polizze.filter(p=>p.ragione_sociale===g.ragione_sociale);
+    const tuttiDis=tuttiPolCliente.length>0&&tuttiPolCliente.every(p=>contractDisdetto[p.id]);
+    const statoCell=tuttiDis
+      ? `<span class="chip" style="background:var(--r7-bg);color:var(--r7)">Disdetto</span>`
+      : isPaid
+        ? `<span class="chip-pagato">Pagato</span>`
+        : `<span class="chip ${mu.cls}">${mu.label}</span>`;
     const nome_esc=esc(g.ragione_sociale);
     html+=`<tr class="client-row${isPaid?' row-paid':''}" id="${rowId}">
       <td style="text-align:center" onclick="toggleCliente('${uid}')"><span class="chevron" id="chev-${uid}">${SVG_CHEVRON}</span></td>
@@ -814,7 +869,7 @@ function renderTable(){
     html+=`<tr id="${subId}" style="display:none"><td colspan="8" style="padding:0">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
-          <th class="sub-header" style="width:36px">Pag.</th>
+          <th class="sub-header" style="width:56px">Pag. / Dis.</th>
           <th class="sub-header">N° Contratto</th>
           <th class="sub-header">Prodotto</th>
           <th class="sub-header">PV Contratto</th>
@@ -830,13 +885,19 @@ function renderTable(){
     g.polizze.sort((a,b)=>new Date(a.scadenza)-new Date(b.scadenza)).forEach(p=>{
       const f=fascia(p.scadenza);
       const isContractPaid=!!contractPagato[p.id];
-      html+=`<tr class="sub-row">
-        <td style="text-align:center;padding-left:8px">
+      const isContractDis=!!contractDisdetto[p.id];
+      html+=`<tr class="sub-row${isContractDis?' disdetto':''}">
+        <td style="text-align:center;padding-left:4px;white-space:nowrap" onclick="event.stopPropagation()">
           <input type="checkbox" class="pay-check pay-contract" ${isContractPaid?'checked':''}
             data-id="${p.id}" data-nome="${g.ragione_sociale.replace(/"/g,'&quot;')}"
             onclick="event.stopPropagation()"
             onchange="toggleContract(this.dataset.id,this.dataset.nome,this.checked)"
-            title="Contratto pagato">
+            title="Pagato" style="margin-right:4px">
+          <input type="checkbox" class="pay-check dis-contract" ${isContractDis?'checked':''}
+            data-id="${p.id}" data-nome="${g.ragione_sociale.replace(/"/g,'&quot;')}"
+            onclick="event.stopPropagation()"
+            onchange="toggleDisdetto(this.dataset.id,this.dataset.nome,this.checked)"
+            title="Disdetto" style="accent-color:var(--r7)">
         </td>
         <td><span class="td-mono" style="font-size:12px">${esc(p.numero||'')}</span></td>
         <td><span class="c-tag">${esc(p.prodotto||'')}</span></td>
@@ -888,7 +949,7 @@ function renderDash(){
   document.getElementById('s-tot').textContent=polizze.length;
   document.getElementById('s-scad').textContent=unpaid.filter(p=>['10','1'].includes(fascia(p.scadenza).key)).length;
   document.getElementById('s-over').textContent=unpaid.filter(p=>['ov7','ov14','ov20','ov25'].includes(fascia(p.scadenza).key)).length;
-  const paidContractsCount=polizze.filter(p=>contractPagato[p.id]).length;
+  const paidContractsCount=polizze.filter(p=>contractPagato[p.id]&&!contractDisdetto[p.id]).length;
   document.getElementById('s-paid').textContent=paidContractsCount;
 
   const mesePol=polizze.filter(p=>{const d=new Date(p.scadenza);return d>=ini&&d<=fin;});
