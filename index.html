@@ -524,10 +524,9 @@ function togglePagato(nome,checked){
   clientePagato[nome]=checked;
   if(checked){ convPagato[nome]=true; intermPagato[nome]=true; }
   else { convPagato[nome]=false; intermPagato[nome]=false; }
-  // Aggiorna anche tutti i contratti del cliente
+  // Aggiorna anche tutti i contratti del cliente (non tocca mai il flag disdetto)
   polizze.filter(p=>p.ragione_sociale===nome).forEach(p=>{
     contractPagato[p.id]=checked;
-    if(checked) contractDisdetto[p.id]=false;
   });
   saveClientePagato();
   updateRowPaid(nome, checked);
@@ -564,13 +563,13 @@ function updateRowPaid(nome, paid){
   if(bd){ bd.style.display=urg?'inline':'none'; bd.textContent=urg; }
 }
 function updateSubCheckboxes(nome, paid){
-  // Usa data-nome per trovare le checkbox secondarie (gestisce apostrofi)
+  // Aggiorna checkbox conv e interm (non tocca mai dis-contract)
   document.querySelectorAll('input.pay-check[data-nome]').forEach(c=>{
-    if(c.dataset.nome===nome && !c.classList.contains('pay-main') && !c.classList.contains('pay-contract')){
+    if(c.dataset.nome===nome && !c.classList.contains('pay-main') && !c.classList.contains('pay-contract') && !c.classList.contains('dis-contract')){
       c.checked=paid;
     }
   });
-  // Aggiorna anche i checkbox per contratto
+  // Aggiorna i checkbox pagato per contratto (non quelli disdetto)
   document.querySelectorAll('input.pay-contract[data-nome]').forEach(c=>{
     if(c.dataset.nome===nome) c.checked=paid;
   });
