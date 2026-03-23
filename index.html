@@ -778,7 +778,7 @@ function renderTable(){
     const statoCell=isPaid
       ? `<span class="chip-pagato">Pagato</span>`
       : `<span class="chip ${mu.cls}">${mu.label}</span>`;
-    const nome_esc=esc(g.ragione_sociale);
+    const nome_esc=jsq(g.ragione_sociale);
     html+=`<tr class="client-row${isPaid?' row-paid':''}" id="${rowId}">
       <td style="text-align:center" onclick="toggleCliente('${uid}')"><span class="chevron" id="chev-${uid}">${SVG_CHEVRON}</span></td>
       <td onclick="toggleCliente('${uid}')"><div class="td-name">${esc(g.ragione_sociale)}</div><div class="td-sub">${g.email?esc(g.email):''}</div></td>
@@ -1170,7 +1170,6 @@ function saveSettings(){
 }
 
 // ── UTILS ──
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 const TOAST_ICONS={
   success:'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
   error:'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>',
@@ -1339,6 +1338,8 @@ function showPage(name){
 
 // ── UTILS ──
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// Escape per uso dentro attributi JS inline (escapa apici singoli)
+function jsq(s){return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 </script>
 </body>
 </html>
