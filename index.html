@@ -843,9 +843,24 @@ const tplK=k=>(({'10':'tpl-10','1':'tpl-1','ov7':'tpl-ov7','ov14':'tpl-ov14','ov
 function renderAll(){renderTable();renderDash();renderScad();}
 
 // ── TABELLA ──
+function parseAmt(v){
+  if(v===null||v===undefined||v==='') return NaN;
+  const s=String(v).trim();
+  // Formato italiano: 1.084,00 → rimuovi punti migliaia, sostituisci virgola con punto
+  if(s.includes(',') && s.includes('.')){
+    // es. 1.084,00 — il punto è migliaia, la virgola è decimale
+    return parseFloat(s.replace(/\./g,'').replace(',','.'));
+  } else if(s.includes(',')){
+    // es. 1084,00 — solo virgola decimale
+    return parseFloat(s.replace(',','.'));
+  } else {
+    // es. 1084.00 — punto decimale inglese
+    return parseFloat(s.replace(/[^\d.]/g,''));
+  }
+}
 function fmtAmt(v){
-  if(!v&&v!==0) return '';
-  const n=parseFloat(v);
+  if(v===null||v===undefined||v==='') return '';
+  const n=parseAmt(v);
   if(isNaN(n)||n===0) return '';
   return '€'+n.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
@@ -900,8 +915,8 @@ function groupByCliente(){
     groups.sort((a,b)=>{
       if(sortCol==='ragione_sociale') return sortDir*(a.ragione_sociale.localeCompare(b.ragione_sociale));
       if(sortCol==='premio_finale'){
-        const sa=a.polizze.reduce((s,p)=>s+(parseFloat(p.premio_finale)||0),0);
-        const sb=b.polizze.reduce((s,p)=>s+(parseFloat(p.premio_finale)||0),0);
+        const sa=a.polizze.reduce((s,p)=>s+(parseAmt(p.premio_finale)||0),0);
+        const sb=b.polizze.reduce((s,p)=>s+(parseAmt(p.premio_finale)||0),0);
         return sortDir*(sa-sb);
       }
       const fa=FASCIA_PRIORITY.indexOf(mostUrgent(a.polizze).key);
@@ -1017,7 +1032,7 @@ function renderTable(){
     const mu=mostUrgent(g.polizze);
     const hasEmail=!!g.email;
     const canEmail=hasEmail&&g.polizze.some(p=>tplK(fascia(p.scadenza).key));
-    const totale=g.polizze.reduce((s,p)=>s+(parseFloat(p.premio_finale)||0),0);
+    const totale=g.polizze.reduce((s,p)=>s+(parseAmt(p.premio_finale)||0),0);
     const totStr=fmtAmt(totale)||'—';
 
     // CLIENT ROW
@@ -1089,16 +1104,16 @@ function renderDash(){
   document.getElementById('s-paid').textContent=paidContractsCount;
 
   const mesePol=polizze.filter(p=>{const d=new Date(p.scadenza);return d>=ini&&d<=fin;});
-  const pr=mesePol.reduce((s,p)=>s+(parseFloat(p.premio_rata)||0),0);
+  const pr=mesePol.reduce((s,p)=>s+(parseAmt(p.premio_rata)||0),0);
   // Conv: da incassare (convPagato=false) vs incassato (convPagato=true)
   const selConvMese=document.getElementById('dash-mese-conv')?.value||'';
   const selIntermMese=document.getElementById('dash-mese-interm')?.value||'';
   const polConv=selConvMese?polizze.filter(p=>{const m=p.mese||'';return m.endsWith('-'+selConvMese);}):polizze;
   const polInterm=selIntermMese?polizze.filter(p=>{const m=p.mese||'';return m.endsWith('-'+selIntermMese);}):polizze;
-  const convDa=polConv.filter(p=>!p.conv_pagato).reduce((s,p)=>s+(parseFloat(p.quota_convenzione)||0),0);
-  const convPaid=polConv.filter(p=>!!p.conv_pagato).reduce((s,p)=>s+(parseFloat(p.quota_convenzione)||0),0);
-  const intermDa=polInterm.filter(p=>!p.interm_pagato).reduce((s,p)=>s+(parseFloat(p.att_intermediazione)||0),0);
-  const intermPaid=polInterm.filter(p=>!!p.interm_pagato).reduce((s,p)=>s+(parseFloat(p.att_intermediazione)||0),0);
+  const convDa=polConv.filter(p=>!p.conv_pagato).reduce((s,p)=>s+(parseAmt(p.quota_convenzione)||0),0);
+  const convPaid=polConv.filter(p=>!!p.conv_pagato).reduce((s,p)=>s+(parseAmt(p.quota_convenzione)||0),0);
+  const intermDa=polInterm.filter(p=>!p.interm_pagato).reduce((s,p)=>s+(parseAmt(p.att_intermediazione)||0),0);
+  const intermPaid=polInterm.filter(p=>!!p.interm_pagato).reduce((s,p)=>s+(parseAmt(p.att_intermediazione)||0),0);
   document.getElementById('s-premi').textContent=fmtAmt(pr)||'€0';
   document.getElementById('s-conv').textContent=fmtAmt(convDa)||'€0';
   document.getElementById('s-conv-paid').textContent=fmtAmt(convPaid)||'€0';
@@ -1344,7 +1359,28 @@ function parseCSV(text){
     if(m3) return `${m3[1]}-${m3[2].padStart(2,'0')}-${m3[3].padStart(2,'0')}`;
     return s;
   };
-  const pn=s=>{if(!s)return'';return s.replace(',','.').replace(/[^\d.]/g,'');};
+  const pn=s=>{
+    if(!s)return'';
+    s=s.trim();
+    if(s.includes(',')&&s.includes('.')){
+      // 1.084,00 — punto=migliaia, virgola=decimale
+      s=s.replace(/\./g,'').replace(',','.');
+    } else if(s.includes(',')){
+      // 1084,00 o 1.084 con virgola — virgola=decimale
+      s=s.replace(',','.');
+    } else if(s.includes('.')){
+      // Solo punto: se ci sono esattamente 3 cifre dopo → migliaia (es. 1.084)
+      const parts=s.split('.');
+      const lastPart=parts[parts.length-1];
+      if(lastPart.length===3 && parts.length===2){
+        // es. 1.084 → 1084
+        s=s.replace('.','');
+      }
+      // altrimenti es. 1084.00 → lascia com'è
+    }
+    s=s.replace(/[^\d.]/g,'');
+    return s;
+  };
 
   importBuffer=lines.slice(1).map(line=>{
     const c=line.split(sep).map(v=>v.trim().replace(/^"|"$/g,''));
@@ -1502,7 +1538,28 @@ function parseCSV(text){
     if(m3) return `${m3[1]}-${m3[2].padStart(2,'0')}-${m3[3].padStart(2,'0')}`;
     return s;
   };
-  const pn=s=>{if(!s)return'';return s.replace(',','.').replace(/[^\d.]/g,'');};
+  const pn=s=>{
+    if(!s)return'';
+    s=s.trim();
+    if(s.includes(',')&&s.includes('.')){
+      // 1.084,00 — punto=migliaia, virgola=decimale
+      s=s.replace(/\./g,'').replace(',','.');
+    } else if(s.includes(',')){
+      // 1084,00 o 1.084 con virgola — virgola=decimale
+      s=s.replace(',','.');
+    } else if(s.includes('.')){
+      // Solo punto: se ci sono esattamente 3 cifre dopo → migliaia (es. 1.084)
+      const parts=s.split('.');
+      const lastPart=parts[parts.length-1];
+      if(lastPart.length===3 && parts.length===2){
+        // es. 1.084 → 1084
+        s=s.replace('.','');
+      }
+      // altrimenti es. 1084.00 → lascia com'è
+    }
+    s=s.replace(/[^\d.]/g,'');
+    return s;
+  };
 
   importBuffer=lines.slice(1).map(line=>{
     const c=line.split(sep).map(v=>v.trim().replace(/^"|"$/g,''));
