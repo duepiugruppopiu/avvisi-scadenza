@@ -598,19 +598,18 @@ async function patchPolizza(id, fields){
     });
   }catch(e){ console.error('patch error',e); }
 }
-function togglePagato(nome,checked){
+async function togglePagato(nome,checked){
   // Aggiorna tutti i contratti del cliente (non tocca disdetto)
-  const patches=polizze.filter(p=>p.ragione_sociale===nome).map(p=>{
+  const pols=polizze.filter(p=>p.ragione_sociale===nome);
+  for(const p of pols){
     const fields={pagato:checked};
     if(checked){ fields.conv_pagato=true; fields.interm_pagato=true; }
     else { fields.conv_pagato=false; fields.interm_pagato=false; }
-    patchPolizza(p.id, fields);
-    return p.id;
-  });
+    await patchPolizza(p.id, fields);
+  }
   updateRowPaid(nome, checked);
   renderDash();
   renderScad();
-  updateSubCheckboxes(nome, checked);
 }
 function updateRowPaid(nome, paid){
   const rowId='crow-'+btoa(unescape(encodeURIComponent(nome))).replace(/[^a-zA-Z0-9]/g,'');
@@ -654,14 +653,13 @@ function updateSubCheckboxes(nome, paid){
   // Aggiorna anche i dati locali
   renderDash();
 }
-function toggleContract(id, nome, checked){
+async function toggleContract(id, nome, checked){
   const fields={pagato:checked};
   if(checked) fields.disdetto=false;
-  patchPolizza(id, fields).then(()=>{
-    aggiornaStatoCliente(nome);
-    updateContractRow(id);
-    renderDash();
-  });
+  await patchPolizza(id, fields);
+  aggiornaStatoCliente(nome);
+  updateContractRow(id);
+  renderDash();
 }
 function toggleDisdetto(id, nome, checked){
   const fields={disdetto:checked};
@@ -950,10 +948,14 @@ function openClienteModal(uid){
   const isConvPaid=getConvPagato(g.ragione_sociale);
   const isIntermPaid=getIntermPagato(g.ragione_sociale);
   const nomeQ=g.ragione_sociale.replace(/"/g,'&quot;');
-  let html=`<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:var(--radius)">
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-      <input type="checkbox" class="pay-check pay-main" ${isPaid?'checked':''} data-nome="${nomeQ}" onchange="togglePagato(this.dataset.nome,this.checked);refreshClienteModal('${uid}')"> Pagato
-    </label>
+  const tuttiDis=g.polizze.length>0&&g.polizze.every(p=>p.disdetto);
+  let html=`<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:var(--radius);flex-wrap:wrap">
+    ${tuttiDis
+      ? `<span class="chip" style="background:var(--r7-bg);color:var(--r7);font-weight:600;padding:5px 12px">Tutti i contratti disdetti</span>`
+      : `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" class="pay-check pay-main" ${isPaid?'checked':''} data-nome="${nomeQ}" onchange="togglePagato(this.dataset.nome,this.checked).then(()=>openClienteModal('${uid}'))"> Pagato
+        </label>`
+    }
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
       <input type="checkbox" class="pay-check" ${isIntermPaid?'checked':''} data-nome="${nomeQ}" onchange="toggleInterm(this.dataset.nome,this.checked)"> Att. Interm. incassata
     </label>
@@ -986,11 +988,11 @@ function openClienteModal(uid){
         <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;min-width:120px">
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;white-space:nowrap">
             <input type="checkbox" class="pay-check pay-contract" ${isContractPaid?'checked':''} data-id="${p.id}" data-nome="${nomeQ}"
-              onchange="toggleContract(this.dataset.id,this.dataset.nome,this.checked);refreshClienteModal('${uid}')"> Pagato
+              onchange="toggleContract(this.dataset.id,this.dataset.nome,this.checked).then(()=>openClienteModal('${uid}'))"> Pagato
           </label>
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;color:var(--r7);white-space:nowrap">
             <input type="checkbox" class="pay-check dis-contract" ${isContractDis?'checked':''} data-id="${p.id}" data-nome="${nomeQ}"
-              style="accent-color:var(--r7)" onchange="toggleDisdetto(this.dataset.id,this.dataset.nome,this.checked);refreshClienteModal('${uid}')"> Disdetto
+              style="accent-color:var(--r7)" onchange="toggleDisdetto(this.dataset.id,this.dataset.nome,this.checked).then(()=>openClienteModal('${uid}'))"> Disdetto
           </label>
           <div style="display:flex;gap:4px;margin-top:4px">
             <button class="btn btn-ghost" style="padding:5px" onclick="closeModal('cliente-modal');openModal('edit','${p.id}')">${SVG_PENCIL}</button>
@@ -1003,9 +1005,9 @@ function openClienteModal(uid){
   body.innerHTML=html;
   modal.classList.add('open');
 }
-function refreshClienteModal(uid){
-  // Re-render modal content after checkbox change
-  setTimeout(()=>openClienteModal(uid), 100);
+async function refreshClienteModal(uid, toggleFn){
+  if(toggleFn) await toggleFn();
+  openClienteModal(uid);
 }
 function toggleCliente(){} // kept for compatibility
 
